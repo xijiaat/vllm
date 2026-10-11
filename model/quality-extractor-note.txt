@@ -1,0 +1,17 @@
+2026-10-11 16:25 UTC, before candidate model B started.
+
+The original regression harness requires a #### number. Baseline A completed
+128 requests without length truncation but only 20 were scored correct. Reading
+three failures showed mathematically correct explicit boxed numbers (70000,
+20, 64) that the original extractor did not recognize. Therefore 20/128 is not
+a reliable standalone model accuracy estimate.
+
+The workload, original scoring records, requests, outputs and performance plan
+remain unchanged. A supplemental analysis is frozen before B measurements:
+last #### number, otherwise last explicit numeric \\boxed{number}, normalized
+with Decimal. No arbitrary last-number fallback and no reference-dependent
+extraction. Report parsed coverage, correct count, paired answers and unchanged
+original score for both arms. This is still a 128-item regression subset, not
+the full GSM8K benchmark or a full model accuracy evaluation.
+
+Analyzer SHA256 c0b6687f745c1b6505547c12548e208f24a3ac67a0038ca9fa0094fa97360a31.

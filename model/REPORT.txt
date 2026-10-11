@@ -1,0 +1,128 @@
+Complete initial H20 model A/B for vLLM PR61088
+
+Verdict: serving integration is implemented and exercised, but this initial A/B
+does NOT demonstrate a stable end-to-end throughput improvement. Keep Draft.
+The primary warm16K/c16 result is +0.134%, within measured variability; two
+low-concurrency decode medians decreased and cold-prefill medians are flat.
+No negative or noisy measurements are omitted.
+
+Sources and configuration
+Candidate 4fe427bd137145c3cd9a8a12c0517d53b533976f; baseline 1ee69dde9cdfc949cfae896016b44357ca864a50.
+Both arms include the same existing #60613 sentinel correctness fix. The three
+affected original files exactly match the recorded baseline and latest-main
+source check. Same immutable image, same read-only DeepSeek-V4.1-Flash weights,
+same ordered four H20-3e GPUs, same TP4/EP, DP1, MRV2, Humming dense and MoE
+backends, 584-byte FP8/BF16 KV, Engram CPU offload, APC on, DSpark5 with real
+standard rejection acceptance. No synthetic acceptance or weight-copy change.
+H20 model copy HF commit is not recorded; config/index hashes and previously
+verified shard manifest plus fresh sizes/stats are retained with the raw run.
+Config SHA2568be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879.
+Index SHA25674b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8.
+Runtime metadata identifies exactly four compressed-KV producers per rank:
+zero-based layers2/8/14 are C2, layer20 is C1. All fusion flags false for A and
+true for B. This is an important limit on the whole-model optimization budget.
+
+One sequential complete A then B, two calibration samples and THREE measured
+samples per cell. Compilation/startup/calibration are excluded. Each measured
+cell sends2*concurrency requests using continuous refill workers. Warm cells use
+1024 output tokens with ignore_eos, cold controls output1 and verified0cached
+tokens. Every warm request has64residual prompt tokens:99.609375% observed hit at
+16K and98.4375% at4K. These are warmed full-request measurements, not literal
+100%-hit/pure-decode measurements. No preemption or foreign-request counter
+mismatch occurred. The shared serialized token-ID inputs match across arms.
+Same copied unmodified TileLang seed was used for both startups; all seed-file
+hashes match. Warmup is still executed. No FlashInfer autotune JSON was persisted
+in either arm; this is not a claim of globally frozen runtime scheduling.
+
+Medians (outputtok/s for hot; inputtok/s for cold)
+cold-16384-c4: A 9464.586 -> B 9463.223; -0.014%; CV A/B 0.01/0.04%
+cold-4096-c4: A 8874.162 -> B 8871.568; -0.029%; CV A/B 2.10/2.17%
+hot-16384-c16: A 836.107 -> B 837.228; 0.134%; CV A/B 1.76/3.90%
+hot-16384-c4: A 556.106 -> B 524.301; -5.719%; CV A/B 12.98/7.14%
+hot-4096-c4: A 570.545 -> B 559.842; -1.876%; CV A/B 9.93/12.71%
+
+All measured throughput samples, chronological within each arm
+cold-16384-c4 A: 9464.585816, 9463.936636, 9466.627065
+cold-16384-c4 B: 9463.222619, 9468.911683, 9461.642829
+cold-4096-c4 A: 8874.162103, 8856.918274, 9192.239539
+cold-4096-c4 B: 9202.725170, 8871.568184, 8860.044402
+hot-16384-c16 A: 860.647134, 833.807266, 836.107365
+hot-16384-c16 B: 832.574793, 837.227976, 892.459713
+hot-16384-c4 A: 581.301838, 451.632221, 556.106017
+hot-16384-c4 B: 524.301132, 481.804098, 555.884547
+hot-4096-c4 A: 489.001641, 570.545013, 592.918086
+hot-4096-c4 B: 643.635914, 499.948667, 559.841544
+
+Warm request latency and real acceptance (median of per-sample server means)
+hot-16384-c16: TTFT A/B 463.435/478.958ms; TPOT 15.823/15.841ms; mean accepted length 3.997/4.099
+  A acceptance samples: 3.997199, 3.934157, 4.055610
+  B acceptance samples: 3.885586, 4.099188, 4.167217
+hot-16384-c4: TTFT A/B 209.819/201.202ms; TPOT 6.339/6.734ms; mean accepted length 4.337/4.089
+  A acceptance samples: 4.470845, 3.570744, 4.336508
+  B acceptance samples: 4.281315, 3.875650, 4.089232
+hot-4096-c4: TTFT A/B 205.409/204.910ms; TPOT 6.134/6.211ms; mean accepted length 4.492/4.348
+  A acceptance samples: 4.037950, 4.650965, 4.491516
+  B acceptance samples: 4.917915, 3.841366, 4.348172
+
+The B primary cell also contains one server-mean TTFT sample of1.089126s,
+retained along with0.463466s and0.478958s. Mean acceptance length varies between
+samples; the low-concurrency throughput CV ranges roughly7.1%..13.0%. Neither
+stable regression nor stable gain is causally established by this one pair.
+Do not select dispatch shapes based on signs from this noisy single pair.
+
+Correctness and memory
+46 targeted full-module pytest cases PASS,132deselected. Earlier40reference and
+18exact-byte replay cases pass, including ring/cache/latent, ragged/padded/wrap/
+changed-input/shrunk-buffer scenarios. Independent device-batched26shape operator
+measurements1.18..1.53x are separate evidence, not model throughput.
+GSM8K fixed first128test rows,5shot(train0..4),max1024,naturalEOS,thinkingfalse,
+concurrency16,temperature0/top_p1/seed713: original ####-only score20A/17B.
+This extractor misses boxed answers and is not a standalone accuracy estimate.
+The supplemental explicit-format rule was frozen before B measured: last ####
+number, else last numeric boxed number, no last-number or reference-dependent
+fallback. Parsed125/128 each, correct123A/124B,122 paired numeric answers match;
+46/128 complete response messages match. Neither arm has length-truncated
+responses. This is a small paired regression subset, not full GSM8K or an
+accuracy-improvement claim. See quality-extractor-note.txt.
+After model load, allocated79796461056bytes and reserved80065069056bytes on
+EVERY rank, identical across A/B. This is after-load allocator evidence, not a
+complete peak-VRAM profile. No additional persistent weights/cache are added.
+
+Reproduction settings (same for both sources; service must remain loopback-only)
+VLLM_USE_V2_MODEL_RUNNER=1 VLLM_SERVER_DEV_MODE=1 OMP_NUM_THREADS=1
+VLLM_NO_USAGE_STATS=1 HF_HUB_OFFLINE=1
+.venv/bin/python -m vllm.entrypoints.openai.api_server \\
+ --model /model --served-model-name dsv41 --host 127.0.0.1 --port 18751 \\
+ --tensor-parallel-size 4 --data-parallel-size 1 --enable-expert-parallel \\
+ --language-model-only --tokenizer-mode deepseek_v41 \\
+ --engram-config '{"cpu_offload":true}' --max-model-len 131072 \\
+ --max-num-seqs 128 --max-num-batched-tokens 16384 --gpu-memory-utilization 0.85 \\
+ --enable-prefix-caching --enable-prompt-tokens-details --api-server-count 1 \\
+ --no-disable-hybrid-kv-cache-manager --seed 0 \\
+ --speculative-config '{"method":"dspark","num_speculative_tokens":5}' \\
+ --worker-cls proof_worker.ProofWorker
+
+Mount these benchmark files at /code, writable /results and /shared, and
+set PYTHONPATH=/code and C1C2_ARM=A or B. The exact benchmark is:
+  .venv/bin/python /code/bench.py
+The fixed plan and pinned GSM8K manifest are included. Preserve /shared/prompts.json
+between arms. Warmup/cache-reset commands require the loopback dev-mode endpoint;
+do not enable or expose that endpoint on a public service. Use identical compile
+seed files and isolate A/B resources. The operational controller and model
+weights are not published here. No production service was used for measurement.
+
+Failures and retained evidence
+Three preceding attempts failed BEFORE performance samples: incorrect assertion
+that the DSpark draft owns compressors; unavailable cache-reset endpoint without
+dev mode; omitted nested dataset manifest in tar packaging. Fixed symmetrically,
+all failures archived, none pooled into this complete cohort.
+Run cohort 20261011T161401Z.
+A raw archive SHA256 00dc0dbfaffce770b7b4c8a8ae476567b0bdc612d40e966bb36f1b3c888690ef,1973688bytes.
+B raw archive SHA256 967c7739bb88b8f3bc401b06e7a5b5ffd6c78ce949e4e8d5937990e1791fb0f9,1958900bytes.
+Full analysis SHA256 4b007d81a50688d59e628dba01c8a038d72060a007d22bd2c7fb21939f7d1116.
+Raw archives and all responses/counters remain on the test host. This public
+report is the inspected summary, not an uploaded copy of those raw archives.
+NCU is not collected; temporary H20 counter permission remains unapproved.
+GPU resources were stopped by the owning controller after both arms. PR remains
+Draft pending NCU, independent causal performance evidence and human review.
+

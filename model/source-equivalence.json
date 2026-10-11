@@ -1,0 +1,18 @@
+{
+  "head": "4fe427bd137145c3cd9a8a12c0517d53b533976f",
+  "sources": {
+    "vllm/models/deepseek_v41/attention.py": {
+      "installed_candidate_sha256": "dfae52ba9d81703b0f53416860a6077c740da68f42dc3f18539191315dd0ccb7",
+      "committed_sha256": "dfae52ba9d81703b0f53416860a6077c740da68f42dc3f18539191315dd0ccb7"
+    },
+    "vllm/models/deepseek_v41/compressor.py": {
+      "installed_candidate_sha256": "28b8e10a9b3510de4f7dd69a1602ef3782767b4453b7b0015bc78a1cce4411d2",
+      "committed_sha256": "28b8e10a9b3510de4f7dd69a1602ef3782767b4453b7b0015bc78a1cce4411d2"
+    },
+    "vllm/models/deepseek_v41/common/ops/fused_compress_quant_cache.py": {
+      "installed_candidate_sha256": "b45c443eb969cf8f5b2d7d81987bc69de9caf5a84ce372d71e18017cc517e49a",
+      "committed_sha256": "b45c443eb969cf8f5b2d7d81987bc69de9caf5a84ce372d71e18017cc517e49a"
+    }
+  },
+  "test_sha256": "d3e10a761fa87d6c3efdb5bf1a1e5a820bd333af74cdea2044525997195497c7"
+}

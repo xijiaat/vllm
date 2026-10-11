@@ -1,0 +1,18 @@
+{
+  "purpose": "Complete PR61088 serving integration, initial real-model A/B",
+  "arms": ["A", "B"],
+  "primary": "warm 16K input, concurrency16, 1024 output, real DSpark5",
+  "hot_cells": [[16384,16], [4096,4], [16384,4]],
+  "hot_calibrations": 2,
+  "hot_samples": 3,
+  "cold_cells": [[4096,4], [16384,4]],
+  "cold_output": 1,
+  "cold_calibrations": 2,
+  "cold_samples": 3,
+  "quality": {"dataset":"GSM8K first128 test rows", "train_fewshot_indices":[0,1,2,3,4], "max_tokens":1024, "natural_eos":true, "thinking":false, "concurrency":16},
+  "sampling": {"seed":713, "temperature":0, "top_p":1},
+  "warm_cache_reporting": "observed cached tokens, no claim of literal100% or source-derived maximal hit",
+  "input": "32 deterministic independent ledger prompts, same serialized token IDs across arms",
+  "timing": "HTTP streaming and server metrics; actual acceptance; all results retained; calibration excluded",
+  "interpretation": "One pair is exploratory, not proof of stable model speedup; repeat independent pairs for a stable claim"
+}
