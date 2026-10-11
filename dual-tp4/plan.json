@@ -1,0 +1,109 @@
+{
+  "purpose": "Two isolated TP4 full-model HTTP streaming A/B with GPU/NUMA crossover; PR61088 unchanged",
+  "primary": "cold16K-c16, cache_hit=0 and 1024 real generated tokens",
+  "cells": [
+    [
+      "cold",
+      16384,
+      16
+    ],
+    [
+      "warm",
+      16384,
+      16
+    ],
+    [
+      "cold",
+      4096,
+      4
+    ],
+    [
+      "warm",
+      4096,
+      4
+    ],
+    [
+      "cold",
+      16384,
+      4
+    ],
+    [
+      "warm",
+      16384,
+      4
+    ]
+  ],
+  "phases": [
+    {
+      "A": 0,
+      "B": 1
+    },
+    {
+      "A": 1,
+      "B": 0
+    }
+  ],
+  "calibration_orders": [
+    [
+      "A",
+      "B"
+    ],
+    [
+      "B",
+      "A"
+    ]
+  ],
+  "measurement_orders": [
+    [
+      "A",
+      "B"
+    ],
+    [
+      "B",
+      "A"
+    ],
+    [
+      "A",
+      "B"
+    ]
+  ],
+  "phase1_reverse_orders": true,
+  "output_tokens": 1024,
+  "requests_per_sample": "2*concurrency, continuous refill workers",
+  "sampling": {
+    "temperature": 0,
+    "top_p": 1,
+    "seed": 713,
+    "ignore_eos": true
+  },
+  "tp": 4,
+  "dp": 1,
+  "ep": true,
+  "dspark": 5,
+  "apc": true,
+  "engram_cpu_offload": true,
+  "warm_policy": "Reset and prime the identical 2*c independent prompts twice before each warm cell; all subsequent calibration/measurement requests must match the independently observed hit across arms",
+  "cold_policy": "Reset prefix cache before every calibration/measurement; every request must report exactly zero cached tokens",
+  "isolation": "Both engines loaded on disjoint GPUs/CPU cores/NUMA memory; only one has traffic at any time; idle peer counters checked unchanged",
+  "interpretation": "Retain all data per hardware phase; report medians, dispersion, TTFT, TPOT, actual DSpark acceptance and loaded memory; do not merge old cohort",
+  "bounded_duration_seconds": 6900,
+  "leave_services_running": false,
+  "candidate_commit": "4fe427bd137145c3cd9a8a12c0517d53b533976f",
+  "host": "isolated 8x H20-3e host (two TP4 instances)",
+  "ports": {
+    "A": 18751,
+    "B": 18752
+  },
+  "cpu_groups": [
+    "4-47",
+    "52-95"
+  ],
+  "mem_nodes": [
+    "0",
+    "1"
+  ],
+  "input": "Reuse immutable previous ledger token IDs, validate length=16384 and 32 independent sessions; no data-dependent tuning",
+  "quality": "Previously completed128-question GSM8K regression on identical source; this campaign measures throughput and verifies backend/source/generation counters",
+  "client_cpus": "0-3",
+  "reproduction_note": "Exact two-phase workload/order. Use the source prompt_rows() function in the linked previous model benchmark to generate32 ledger prompts with seed713; retain generated token IDs across arms. Hardware-specific ownership controller and full raw archive remain in the private experiment record."
+}

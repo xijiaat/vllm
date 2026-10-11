@@ -1,0 +1,94 @@
+{
+  "peak_measured": false,
+  "note": "Fresh nvidia-smi snapshots at readiness; PyTorch counters captured after model load before KV allocation/graph warmup. These are not peak-memory measurements.",
+  "runs": [
+    {
+      "phase": 0,
+      "arm": "A",
+      "ready_memory_mib": [
+        119175,
+        119175,
+        119175,
+        119175
+      ],
+      "allocated_after_load_bytes": [
+        79796461056,
+        79796461056,
+        79796461056,
+        79796461056
+      ],
+      "reserved_after_load_bytes": [
+        80065069056,
+        80065069056,
+        80065069056,
+        80065069056
+      ]
+    },
+    {
+      "phase": 0,
+      "arm": "B",
+      "ready_memory_mib": [
+        119177,
+        119177,
+        119177,
+        119177
+      ],
+      "allocated_after_load_bytes": [
+        79796461056,
+        79796461056,
+        79796461056,
+        79796461056
+      ],
+      "reserved_after_load_bytes": [
+        80065069056,
+        80065069056,
+        80065069056,
+        80065069056
+      ]
+    },
+    {
+      "phase": 1,
+      "arm": "A",
+      "ready_memory_mib": [
+        119175,
+        119175,
+        119175,
+        119175
+      ],
+      "allocated_after_load_bytes": [
+        79796461056,
+        79796461056,
+        79796461056,
+        79796461056
+      ],
+      "reserved_after_load_bytes": [
+        80065069056,
+        80065069056,
+        80065069056,
+        80065069056
+      ]
+    },
+    {
+      "phase": 1,
+      "arm": "B",
+      "ready_memory_mib": [
+        119177,
+        119177,
+        119177,
+        119177
+      ],
+      "allocated_after_load_bytes": [
+        79796461056,
+        79796461056,
+        79796461056,
+        79796461056
+      ],
+      "reserved_after_load_bytes": [
+        80065069056,
+        80065069056,
+        80065069056,
+        80065069056
+      ]
+    }
+  ]
+}

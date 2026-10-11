@@ -1,0 +1,224 @@
+COMPLETE — H20 two-TP4 full-model crossover for vLLM PR #61088
+
+The cold 16K/c4 cell has a positive signal in both placements (+3.81% and +2.45%; pooled median +2.29%). The predeclared cold 16K/c16 primary is effectively unchanged, and warm 16K/c16 is slightly lower. Other low-concurrency cells change direction after the GPU swap. These measurements do not establish a stable general model speedup; keep the PR as Draft.
+
+Configuration and method
+Baseline: vLLM 1ee69dde9 plus the common, existing #60613 sentinel correctness fix. Candidate: the same image with only PR #61088 runtime files at 4fe427bd137145c3cd9a8a12c0517d53b533976f. Original and candidate source hashes are in analysis-summary.json. No weights, precision, backend configuration or sampling settings were changed.
+Full DeepSeek-V4.1-Flash weights; H20-3e / SM90; torch 2.13.0+cu130; TP4, DP1, EP, MRV2, Humming, Engram CPU offload, APC enabled, 16K token chunk and real DSpark 5 standard rejection. No synthetic acceptance. The two instances use disjoint four-GPU groups, disjoint sets of 44 CPU IDs, and separate NUMA allocations. Only one instance receives requests at a time; the peer's request/token/draft counters are checked unchanged.
+Two complete engine startup pairs, with physical GPU groups swapped for the second pair. Each of six workloads has two excluded calibration pairs and three measured pairs per placement. Orders are AB/BA/AB in phase0 and reversed in phase1. This is six measured batches per arm/cell, not six independent model restarts. All 72 measured batches and 48 calibration batches completed. The measured batches contain 1,152 requests and 1,179,648 generated tokens.
+Inputs are fixed synthetic ledger prompts, 4,096 or 16,384 tokens. Every request generates exactly 1,024 tokens (temperature 0, top_p 1, seed 713, ignore_eos true). Each batch contains twice the concurrency in requests, with continuous refill workers. Output tok/s includes full HTTP request processing and the final request drain; it is not pure prefill throughput or a permanently saturated steady-state measurement.
+Cold: reset APC before each batch and assert cached_tokens == 0 for every request. Warm: two untimed priming passes and exact per-request verification against observed hits. Warm 16K hits 99.609375%; warm 4K hits 98.4375%. Both retain 64 residual prompt tokens; neither is literal 100% hit.
+
+All results — output tokens/s
+Workload | Pooled median A | Pooled median B | Pooled change | Phase0 change | Swapped phase1 change | Geometric placement estimate
+cold-16384-c16 | 355.055 | 354.860 | -0.055% | -0.087% | +0.611% | +0.261%
+warm-16384-c16 | 846.134 | 839.591 | -0.773% | -2.090% | -0.150% | -1.125%
+cold-4096-c4 | 479.744 | 470.546 | -1.917% | -11.390% | +19.679% | +2.979%
+warm-4096-c4 | 562.920 | 520.785 | -7.485% | -15.626% | +9.448% | -3.903%
+cold-16384-c4 | 270.430 | 276.632 | +2.294% | +3.809% | +2.451% | +3.127%
+warm-16384-c4 | 526.667 | 531.645 | +0.945% | +8.602% | -14.683% | -3.742%
+
+The geometric estimate is sqrt((B0/A0)*(B1/A1))-1, using within-placement medians. It is descriptive and assumes multiplicative placement effects; it does not remove acceptance differences. Pooled medians and geometric estimates are both reported because they can disagree when batches vary. The earlier one-engine sequential cohort is kept separate and is not pooled here.
+
+All measured samples and latency / acceptance
+TTFT and TPOT below are the median of each batch's server-metric mean. All sample arrays use pair order 0,1,2. TPOT is not inferred from SSE text chunk count.
+
+cold-16384-c16
+  Phase 0: -0.086820%; paired changes [-2.608481, -2.544917, -0.08682]; equal A/B long-text hashes per batch [1, 0, 0]
+    A output tok/s: [354.799383, 367.615404, 355.310832]; median 355.310832, range 354.799383..367.615404, CV 2.020%
+    A TTFT ms: [9463.422, 9681.587, 9469.765]; median 9469.765
+    A TPOT ms: [33.401, 32.436, 33.43]; median 33.401
+    A E2E request latency s: [43.630627, 42.861259, 43.666514]
+    A real acceptance length (1 + accepted tokens / drafts): [3.93543, 4.184717, 3.944571]; median 3.944571
+    A observed cache-hit ratios: [0.0, 0.0, 0.0]
+    B output tok/s: [345.544508, 358.259896, 355.002353]; median 355.002353, range 345.544508..358.259896, CV 1.871%
+    B TTFT ms: [9400.058, 9359.104, 9295.889]; median 9359.104
+    B TPOT ms: [33.515, 33.14, 33.847]; median 33.515
+    B E2E request latency s: [43.68438, 43.259114, 43.919967]
+    B real acceptance length (1 + accepted tokens / drafts): [3.868042, 4.012849, 3.939707]; median 3.939707
+    B observed cache-hit ratios: [0.0, 0.0, 0.0]
+  Phase 1: +0.610806%; paired changes [2.578332, 2.15589, -2.940899]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [352.564181, 347.231731, 359.004394]; median 352.564181, range 347.231731..359.004394, CV 1.670%
+    A TTFT ms: [9609.911, 9270.854, 9506.38]; median 9506.380
+    A TPOT ms: [32.504, 34.406, 32.072]; median 32.504
+    A E2E request latency s: [42.859245, 44.465751, 42.313744]
+    A real acceptance length (1 + accepted tokens / drafts): [4.0435, 3.782443, 4.197646]; median 4.043500
+    A observed cache-hit ratios: [0.0, 0.0, 0.0]
+    B output tok/s: [361.654456, 354.717666, 348.446438]; median 354.717666, range 348.446438..361.654456, CV 1.861%
+    B TTFT ms: [9317.183, 9323.323, 9308.48]; median 9317.183
+    B TPOT ms: [32.457, 33.557, 34.786]; median 33.557
+    B E2E request latency s: [42.51822, 43.650319, 44.892278]
+    B real acceptance length (1 + accepted tokens / drafts): [4.210445, 3.973248, 3.762271]; median 3.973248
+    B observed cache-hit ratios: [0.0, 0.0, 0.0]
+  Pooled throughput CV A/B: 1.923% / 1.698%
+
+warm-16384-c16
+  Phase 0: -2.089730%; paired changes [-5.166615, 17.273269, -9.683271]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [832.578296, 785.732127, 902.578807]; median 832.578296, range 785.732127..902.578807, CV 6.998%
+    A TTFT ms: [467.929, 447.878, 469.784]; median 467.929
+    A TPOT ms: [16.078, 16.958, 15.235]; median 16.078
+    A E2E request latency s: [16.915407, 17.795902, 16.055325]
+    A real acceptance length (1 + accepted tokens / drafts): [4.023792, 3.775271, 4.243114]; median 4.023792
+    A observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+    B output tok/s: [789.562183, 921.453753, 815.179656]; median 815.179656, range 789.562183..921.453753, CV 8.305%
+    B TTFT ms: [500.767, 473.503, 497.43]; median 497.430
+    B TPOT ms: [17.223, 14.701, 16.151]; median 16.151
+    B E2E request latency s: [18.119537, 15.511996, 17.019285]
+    B real acceptance length (1 + accepted tokens / drafts): [3.760949, 4.428861, 3.925102]; median 3.925102
+    B observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+  Phase 1: -0.149838%; paired changes [-1.100576, -2.386869, 1.965208]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [858.552029, 850.377195, 841.891086]; median 850.377195, range 841.891086..858.552029, CV 0.980%
+    A TTFT ms: [466.487, 466.674, 477.688]; median 466.674
+    A TPOT ms: [16.273, 16.449, 15.927]; median 16.273
+    A E2E request latency s: [17.113082, 17.293904, 16.77077]
+    A real acceptance length (1 + accepted tokens / drafts): [4.010759, 3.976006, 4.043141]; median 4.010759
+    A observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+    B output tok/s: [849.103009, 830.079806, 858.435998]; median 849.103009, range 830.079806..858.435998, CV 1.708%
+    B TTFT ms: [469.708, 454.332, 479.683]; median 469.708
+    B TPOT ms: [15.488, 16.35, 16.467]; median 16.350
+    B E2E request latency s: [16.313097, 17.180511, 17.325383]
+    B real acceptance length (1 + accepted tokens / drafts): [4.067072, 3.904915, 3.930258]; median 3.930258
+    B observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+  Pooled throughput CV A/B: 4.491% / 5.357%
+
+cold-4096-c4
+  Phase 0: -11.389817%; paired changes [3.627306, -11.389817, -11.690272]; equal A/B long-text hashes per batch [0, 1, 0]
+    A output tok/s: [493.198007, 489.835117, 484.945978]; median 489.835117, range 484.945978..493.198007, CV 0.848%
+    A TTFT ms: [1113.736, 928.831, 1015.864]; median 1015.864
+    A TPOT ms: [6.494, 6.646, 6.967]; median 6.646
+    A E2E request latency s: [7.755069, 7.72679, 8.141574]
+    A real acceptance length (1 + accepted tokens / drafts): [4.671412, 4.695826, 4.552967]; median 4.671412
+    A observed cache-hit ratios: [0.0, 0.0, 0.0]
+    B output tok/s: [511.087805, 434.043795, 428.254473]; median 434.043795, range 428.254473..511.087805, CV 10.101%
+    B TTFT ms: [988.188, 960.689, 930.864]; median 960.689
+    B TPOT ms: [6.44, 7.042, 7.304]; median 7.042
+    B E2E request latency s: [7.575004, 8.163139, 8.401531]
+    B real acceptance length (1 + accepted tokens / drafts): [4.811951, 4.239524, 4.141129]; median 4.239524
+    B observed cache-hit ratios: [0.0, 0.0, 0.0]
+  Phase 1: +19.678835%; paired changes [22.765419, 23.800231, -9.571745]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [423.674908, 409.570473, 474.541915]; median 423.674908, range 409.570473..474.541915, CV 7.840%
+    A TTFT ms: [1019.108, 930.336, 1118.486]; median 1019.108
+    A TPOT ms: [7.016, 7.815, 6.593]; median 7.016
+    A E2E request latency s: [8.194888, 8.924137, 7.861407]
+    A real acceptance length (1 + accepted tokens / drafts): [4.099, 3.86739, 4.506315]; median 4.099000
+    A observed cache-hit ratios: [0.0, 0.0, 0.0]
+    B output tok/s: [520.126274, 507.049192, 429.119972]; median 507.049192, range 429.119972..520.126274, CV 10.136%
+    B TTFT ms: [929.219, 1049.602, 928.585]; median 929.219
+    B TPOT ms: [6.529, 6.146, 7.675]; median 6.529
+    B E2E request latency s: [7.607584, 7.336436, 8.778726]
+    B real acceptance length (1 + accepted tokens / drafts): [4.883929, 4.925436, 3.956543]; median 4.883929
+    B observed cache-hit ratios: [0.0, 0.0, 0.0]
+  Pooled throughput CV A/B: 7.881% / 9.607%
+
+warm-4096-c4
+  Phase 0: -15.626145%; paired changes [-11.24147, -15.524998, -29.128258]; equal A/B long-text hashes per batch [1, 0, 0]
+    A output tok/s: [563.257415, 562.582994, 655.669673]; median 563.257415, range 562.582994..655.669673, CV 9.018%
+    A TTFT ms: [206.162, 205.599, 207.839]; median 206.162
+    A TPOT ms: [6.229, 6.323, 5.648]; median 6.229
+    A E2E request latency s: [6.577961, 6.674, 5.985576]
+    A real acceptance length (1 + accepted tokens / drafts): [4.370607, 4.314211, 4.961259]; median 4.370607
+    A observed cache-hit ratios: [0.984375, 0.984375, 0.984375]
+    B output tok/s: [499.939004, 475.241994, 464.684518]; median 475.241994, range 464.684518..499.939004, CV 3.770%
+    B TTFT ms: [207.93, 206.621, 208.16]; median 207.930
+    B TPOT ms: [7.13, 7.263, 7.466]; median 7.263
+    B E2E request latency s: [7.502033, 7.636806, 7.8459]
+    B real acceptance length (1 + accepted tokens / drafts): [3.830453, 3.731696, 3.653161]; median 3.731696
+    B observed cache-hit ratios: [0.984375, 0.984375, 0.984375]
+  Phase 1: +9.448123%; paired changes [9.448123, -1.33114, 3.262648]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [549.886168, 548.937394, 584.725088]; median 549.886168, range 548.937394..584.725088, CV 3.634%
+    A TTFT ms: [205.807, 209.965, 207.593]; median 207.593
+    A TPOT ms: [6.213, 6.684, 5.871]; median 6.213
+    A E2E request latency s: [6.561665, 7.047611, 6.213593]
+    A real acceptance length (1 + accepted tokens / drafts): [4.362427, 4.102, 4.586689]; median 4.362427
+    A observed cache-hit ratios: [0.984375, 0.984375, 0.984375]
+    B output tok/s: [601.840087, 541.630269, 603.802611]; median 601.840087, range 541.630269..603.802611, CV 6.068%
+    B TTFT ms: [184.595, 205.998, 216.258]; median 205.998
+    B TPOT ms: [5.854, 6.26, 5.77]; median 5.854
+    B E2E request latency s: [6.172774, 6.609436, 6.119046]
+    B real acceptance length (1 + accepted tokens / drafts): [4.638575, 4.318062, 4.678082]; median 4.638575
+    B observed cache-hit ratios: [0.984375, 0.984375, 0.984375]
+  Pooled throughput CV A/B: 6.998% / 11.575%
+
+cold-16384-c4
+  Phase 0: +3.808683%; paired changes [6.322924, 7.340048, -10.982283]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [283.968742, 274.626495, 304.490232]; median 283.968742, range 274.626495..304.490232, CV 5.310%
+    A TTFT ms: [3511.458, 3719.03, 3512.58]; median 3512.580
+    A TPOT ms: [9.501, 9.249, 9.278]; median 9.278
+    A E2E request latency s: [13.230113, 13.179766, 13.0028]
+    A real acceptance length (1 + accepted tokens / drafts): [4.240186, 4.233351, 4.59361]; median 4.240186
+    A observed cache-hit ratios: [0.0, 0.0, 0.0]
+    B output tok/s: [301.923869, 294.784211, 271.050252]; median 294.784211, range 271.050252..301.923869, CV 5.588%
+    B TTFT ms: [4592.323, 3719.254, 3947.747]; median 3947.747
+    B TPOT ms: [8.161, 9.351, 9.98]; median 9.351
+    B E2E request latency s: [12.939149, 13.284029, 14.15679]
+    B real acceptance length (1 + accepted tokens / drafts): [4.647025, 4.391863, 3.819832]; median 4.391863
+    B observed cache-hit ratios: [0.0, 0.0, 0.0]
+  Phase 1: +2.450587%; paired changes [2.450587, 5.779231, 7.40755]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [265.147401, 266.232515, 247.725038]; median 265.147401, range 247.725038..266.232515, CV 3.999%
+    A TTFT ms: [3531.351, 3514.348, 3525.822]; median 3525.822
+    A TPOT ms: [10.832, 10.663, 12.024]; median 10.832
+    A E2E request latency s: [14.610965, 14.422024, 15.825741]
+    A real acceptance length (1 + accepted tokens / drafts): [3.65198, 3.65049, 3.113895]; median 3.650490
+    A observed cache-hit ratios: [0.0, 0.0, 0.0]
+    B output tok/s: [271.645068, 281.618707, 266.075393]; median 271.645068, range 266.075393..281.618707, CV 2.883%
+    B TTFT ms: [3513.93, 3719.93, 3513.276]; median 3513.930
+    B TPOT ms: [10.373, 10.014, 10.415]; median 10.373
+    B E2E request latency s: [14.124707, 13.962914, 14.166664]
+    B real acceptance length (1 + accepted tokens / drafts): [3.79537, 3.935701, 3.74543]; median 3.795370
+    B observed cache-hit ratios: [0.0, 0.0, 0.0]
+  Pooled throughput CV A/B: 7.043% / 5.122%
+
+warm-16384-c4
+  Phase 0: +8.602446%; paired changes [28.25431, -7.096154, 8.602446]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [472.17107, 563.333263, 497.163818]; median 497.163818, range 472.171070..563.333263, CV 9.220%
+    A TTFT ms: [203.703, 213.68, 203.868]; median 203.868
+    A TPOT ms: [6.948, 6.62, 6.986]; median 6.948
+    A E2E request latency s: [7.311366, 6.985549, 7.350768]
+    A real acceptance length (1 + accepted tokens / drafts): [3.787529, 4.18734, 3.914599]; median 3.914599
+    A observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+    B output tok/s: [605.579749, 523.358269, 539.932069]; median 539.932069, range 523.358269..605.579749, CV 7.817%
+    B TTFT ms: [221.285, 204.288, 212.117]; median 212.117
+    B TPOT ms: [5.965, 6.769, 6.441]; median 6.441
+    B E2E request latency s: [6.323165, 7.128993, 6.801102]
+    B real acceptance length (1 + accepted tokens / drafts): [4.646459, 4.064916, 4.18307]; median 4.183070
+    B observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+  Phase 1: -14.682547%; paired changes [-8.590073, -14.682547, -12.293884]; equal A/B long-text hashes per batch [0, 0, 0]
+    A output tok/s: [675.670473, 536.764808, 516.568538]; median 536.764808, range 516.568538..675.670473, CV 15.029%
+    A TTFT ms: [211.512, 203.47, 197.728]; median 203.470
+    A TPOT ms: [5.416, 6.437, 6.387]; median 6.387
+    A E2E request latency s: [5.751541, 6.788559, 6.73083]
+    A real acceptance length (1 + accepted tokens / drafts): [5.164884, 4.232955, 4.172519]; median 4.232955
+    A observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+    B output tok/s: [617.629887, 457.954061, 453.0622]; median 457.954061, range 453.062200..617.629887, CV 18.376%
+    B TTFT ms: [220.956, 210.844, 211.095]; median 211.095
+    B TPOT ms: [5.553, 6.918, 7.292]; median 6.918
+    B E2E request latency s: [5.901282, 7.287326, 7.670181]
+    B real acceptance length (1 + accepted tokens / drafts): [4.897252, 3.82416, 3.667114]; median 3.824160
+    B observed cache-hit ratios: [0.99609375, 0.99609375, 0.99609375]
+  Pooled throughput CV A/B: 13.231% / 13.160%
+
+Interpretation
+Cold 16K/c4 is worth retaining as a positive signal, but it is not sufficient to claim a stable code-derived gain. Its per-batch variation exceeds the pooled change, and candidate acceptance is also higher in both placements. Throughput and acceptance are jointly affected by generated text, batching and request drain. Do not divide by acceptance to manufacture an adjusted model gain, discard the unfavorable third pair, or fit dispatch to a benchmark context/concurrency boundary.
+The unchanged baseline also produces different long-text hashes across repeats. Phase0 acceptance/throughput correlations are high, but these are descriptive associations, not proof of causality or proof that fusion cannot affect outputs. The exact-byte operator checks and the separate quality subset are the relevant correctness evidence.
+Only four compressed-KV producers per rank use this fusion: C2 at layers 2/8/14 and C1 at layer 20. Source inspection shows the split path overlaps main-cache insertion with indexer preparation, while the fused path finishes the combined operation before indexer preparation. That can limit the end-to-end value of a faster isolated chain; no NCU-derived causal claim is made.
+
+Correctness and memory
+Carried-forward validation on identical PR source: 46 targeted GPU pytest cases passed, plus 18 exact-byte state/latent/cache stress cases including CUDA Graph replay. Device-batched operator measurements covered 26 shapes and found 1.18–1.53x isolated speedup. These are operator results, not model gains.
+The earlier fixed 128-question GSM8K subset, five-shot with natural EOS and max 1024 tokens, scored 123/128 baseline and 124/128 candidate using the final-number extractor frozen before B. Each arm parsed 125 answers; 122 numeric answers matched and 46 full messages matched. No answer was truncated. This is a regression subset, not full-model quality evaluation or evidence of improved accuracy.
+All four ranks, both placements: after-load PyTorch allocated 79,796,461,056 bytes and reserved 80,065,069,056 bytes in both arms. Fresh readiness snapshots: A 119,175 MiB per GPU; B 119,177 MiB per GPU (+2 MiB). These snapshots are not peak VRAM. There is no additional persistent weight representation.
+
+Run integrity and cleanup
+The first dual-r1 attempt failed before any benchmark samples because the metadata comparison did not normalize the GPU- prefix omitted by torch's UUID string. It was archived separately. Only metadata normalization changed in r2.
+During phase0, the launcher session reported the bastion idle disconnect and the original controller was later absent. The independent phase0 benchmark client completed all six workloads with exit code 0. A detached recovery controller verified the completed phase, stopped only its exact owned containers and resumed only phase1. The original plan, code, sample counts and absolute time bound were retained; no measured samples were removed or repeated.
+All six owned containers (four models and two CPU clients) stopped with exit code 0. active.json is absent, and a fresh final check found all eight selected H20 GPUs at 0 MiB / 0%, with no compute processes. The existing unrelated container was not changed. Original images and read-only weights were not modified; candidate source changes were confined to owned container layers.
+NCU counter access and human line review remain pending. No host settings or container capabilities were changed. Other SM90 products have not been benchmarked.
+
+Evidence and reproduction
+Campaign: 20261011T171239Z
+Image digest: sha256:4f978d366b47d680557d4f6e5a98e5a5f279c1d21c3e742a0bd78bd34491850c
+Frozen plan SHA256: d42d7473f760ca27c9e907c81eaffa92e359b40fd877da93de40989c3d290d69
+Frozen analyzer SHA256: c1d557d657b4fed63c957c56958bc5b689bcac2dd47d16b3a10c80f2043ab340
+Full remote analysis SHA256: 65b1b153b946c18b3b1c2181803fc8da36fa31a31e3fc69e7f730899edc58666
+Original complete raw archive: 20261011T171239Z.tgz (17871797 bytes), SHA256 bc2d92a52c39117fb1d60c34261972f4a227af8bec521da41ac9442831de34a9
+The complete raw archive remains on the test host. It has not been represented as downloaded or uploaded publicly. Published evidence contains every measured batch summary, latency/acceptance arrays, source hashes, memory/cleanup receipts and the benchmark/analysis scripts.
+Use dual_bench.py with the fixed plan and unchanged bench_helpers.py; generate the 32 ledger prompts with prompt_rows() in the prior model/bench.py. Retain token IDs across arms and verify their SHA. Start two instances with the same configuration, measure serially, then restart with GPU groups swapped. analyze_dual.py validates the completed raw campaign before summarizing. See REPRODUCE.txt in the local experiment for ownership/recovery details.
