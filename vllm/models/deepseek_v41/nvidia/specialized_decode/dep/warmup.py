@@ -4,6 +4,10 @@
 
 import torch
 
+from vllm.config.compilation import (
+    decode_cudagraph_capture_max_tokens,
+    decode_cudagraph_capture_shapes,
+)
 from vllm.models.deepseek_v41.nvidia.ops.o_proj import (
     precompile_dsv41_o_proj_early_trigger,
 )
@@ -25,6 +29,7 @@ from vllm.models.deepseek_v41.nvidia.specialized_decode.runtime.warmup import (
     _tuning,
     _warm_up_mhc,
 )
+from vllm.v1.worker.gpu.spec_decode.dflash.config import DFlashSpeculatorConfig
 
 from ..attention.aux_projections import (
     warmup_aux_projection_gemms,
@@ -113,12 +118,31 @@ def warm_up(decode, vllm_config, drafts=()):
         }.values():
             precompile_dsv41_o_proj_early_trigger(attn, 48)
         for executor in executors:
-            # Exact additional graph row counts are prepared by plan() during
-            # the runner's eager warmup immediately preceding each capture.
             if decode.config.autotune:
                 with _tuning():
                     executor.prepare_rows(executor.config.max_rows)
             else:
                 executor.prepare_rows(executor.config.max_rows)
+            # Use the runner's graph shapes; live eager fallback must not compile
+            # unused specialized kernels for arbitrary prefill tail lengths.
+            spec = vllm_config.speculative_config
+            assert spec is not None
+            query_len = spec.num_speculative_tokens + 1
+            if executor.is_draft:
+                speculator = spec.speculator_config
+                assert isinstance(speculator, DFlashSpeculatorConfig)
+                query_len = speculator.num_query_tokens
+                query_lens = {query_len: vllm_config.scheduler_config.max_num_seqs}
+            else:
+                query_lens = vllm_config.get_decode_cudagraph_query_lens(query_len)
+            compilation = vllm_config.compilation_config
+            for num_reqs, query_len in decode_cudagraph_capture_shapes(
+                compilation.decode_cudagraph_capture_request_sizes or [],
+                query_lens,
+                decode_cudagraph_capture_max_tokens(compilation),
+            ):
+                rows = num_reqs * query_len
+                if 0 < rows <= executor.config.max_rows:
+                    executor.prepare_rows(rows)
             if decode.config.jit_warmup:
                 _warm_up_mhc(executor, vllm_config, executor.config.max_rows)

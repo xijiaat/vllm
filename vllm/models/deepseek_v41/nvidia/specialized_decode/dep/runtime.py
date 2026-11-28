@@ -144,7 +144,6 @@ class DEPDecode:
         ):
             return None
         if not torch.cuda.is_current_stream_capturing():
-            self.prepare_rows(rows)
             if self.candidates is not None:
                 self.candidates.warm()
             return None
